@@ -3,29 +3,53 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Security.Cryptography;
+using UnityEngine.InputSystem;
 using UnityEngine;
+using System.IO;
 
 public class PlayerController : MonoBehaviour
 {
+    private PlayerInput playerInput;
     private Rigidbody rb;
-    public Transform orientation;
     private float horizontal;
     private float vertical;
-    [SerializeField]
     private bool grounded = false;
-    [SerializeField]
     private bool bhop = false;
-    [SerializeField]
-    public float groundDrag;
+    private float groundDrag;
     private Vector3 moveDirection;
     private Transform cameraTransform;
+
+    [SerializeField]
+    private Transform aim;
+    [SerializeField]
+    private Transform orientation;
+    [SerializeField]
+    private Transform originTransform;
+    [SerializeField]
+    private Transform spellParent;
+    [SerializeField]
+    private Transform centerTransform;
+    [SerializeField]
+    private Transform spellAimTransform;
+
+    // SPELLS
+    [SerializeField]
+    private GameObject normalSpellPrefab;
+    [SerializeField]
+    private GameObject airSpellPrefab;
+    [SerializeField]
+    private GameObject dashSpellPrefab;
+    [SerializeField]
+    private GameObject groundSpellPrefab;
+    [SerializeField]
+    private GameObject focusSpellPrefab;
 
     [SerializeField]
     private float speed;
     [SerializeField]
     private float momentum = 1.0f;
     [SerializeField]
-    private float maxMom = 2.0f;
+    private float maxMom;
     [SerializeField]
     private float jumpForce;
     [SerializeField]
@@ -33,17 +57,18 @@ public class PlayerController : MonoBehaviour
     [SerializeField]
     private float momentumClimb;
 
-    public float rotSpeed = 100f;
+    private float rotSpeed = 100f;
 
-    public float dashCooldown = 0.75f;
-    [SerializeField]
-    public bool dashReset;
-    [SerializeField]
-    public bool dashEnd;
-    [SerializeField]
+    private float dashCooldown = 0.4f;
+    private bool dashReset;
+    private bool dashEnd;
     private bool crouched = false;
-    [SerializeField]
     private bool slam = false;
+    private bool focus = false;
+    private Vector3 vec;
+
+    private InputAction shootAction;
+
 
     enum State
     {
@@ -56,10 +81,56 @@ public class PlayerController : MonoBehaviour
     State playerState = State.NORMAL;
 
     // Start is called before the first frame update
-    void Start()
+    void Awake()
     {
+        playerInput = GetComponent<PlayerInput>();
         cameraTransform = Camera.main.transform;
         rb = GetComponent<Rigidbody>();
+        groundDrag = 5f;
+        shootAction = playerInput.actions["Cast"];
+    }
+
+    private void OnEnable()
+    {
+        shootAction.performed += _ => startShoot();
+    }
+
+    private void OnDisable()
+    {
+        shootAction.performed -= _ => startShoot();
+    }
+
+    private void startShoot()
+    {
+        GameObject spell;
+        if (playerState == State.NORMAL)
+        {
+            spell = GameObject.Instantiate(normalSpellPrefab, originTransform.position, Quaternion.identity, spellParent);
+        }
+        else if(playerState == State.AERIAL)
+        {
+            spell = GameObject.Instantiate(airSpellPrefab, originTransform.position, Quaternion.identity, spellParent);
+        }
+        else if (playerState == State.GROUND)
+        {
+            spell = GameObject.Instantiate(groundSpellPrefab, originTransform.position, Quaternion.identity, spellParent);
+        }
+        else if (playerState == State.DASH)
+        {
+            spell = GameObject.Instantiate(dashSpellPrefab, originTransform.position, Quaternion.identity, spellParent);
+        }
+        else
+        {
+            spell = GameObject.Instantiate(focusSpellPrefab, originTransform.position, Quaternion.identity, spellParent);
+        }
+        Spell sp = spell.GetComponent<Spell>();
+        sp.transform.forward = orientation.forward;
+        sp.dir = transform.forward;
+        //sp.aimDirect = (transform.forward + sp.aim);
+        //UnityEngine.Debug.Log(sp.end);
+
+        Rigidbody srb = spell.GetComponent<Rigidbody>();
+        srb.velocity = (vec - originTransform.position).normalized * sp.travelTime;
     }
 
     // Update is called once per frame
@@ -68,6 +139,19 @@ public class PlayerController : MonoBehaviour
         horizontal = Input.GetAxisRaw("Horizontal");
         vertical = Input.GetAxisRaw("Vertical");
         SpeedControl();
+
+        RaycastHit hit;
+        
+        if (Physics.Raycast(centerTransform.position, (spellAimTransform.position - centerTransform.position).normalized, out hit, 1000f))
+        {
+            UnityEngine.Debug.DrawRay(originTransform.position, (hit.point - originTransform.position).normalized * hit.distance);
+            vec = hit.point;
+        }
+        else
+        {
+            UnityEngine.Debug.DrawRay(originTransform.position, (spellAimTransform.position - originTransform.position).normalized * 1000f);
+            vec = spellAimTransform.position;
+        }
 
         // Handle Jump Input *********************************************************************************
 
@@ -92,7 +176,21 @@ public class PlayerController : MonoBehaviour
         else if (Input.GetKeyUp(KeyCode.LeftControl))
         {
             crouched = false;
-            TransitionState();
+            if (bhop)
+            {
+                //UnityEngine.Debug.Log("Switch to AERIAL!");
+                playerState = State.AERIAL;
+            }
+            else if(focus)
+            {
+                //UnityEngine.Debug.Log("Switch to FOCUS!");
+                playerState = State.FOCUS;
+            }
+            else
+            {
+                //UnityEngine.Debug.Log("Switch to NORMAL!");
+                playerState = State.NORMAL;
+            }
         }
 
         // HANDLE THE DASH INPUT *********************************************************************************
@@ -103,15 +201,27 @@ public class PlayerController : MonoBehaviour
             dashEnd = true;
             TransitionState();
         }
-        // Causing normal states when spammed.
-        else if (Input.GetKeyUp(KeyCode.LeftShift) && !dashEnd)
+
+        else if (Input.GetKeyUp(KeyCode.LeftShift))
         {
             if (bhop)
             {
+                //UnityEngine.Debug.Log("Switch to AERIAL!");
                 playerState = State.AERIAL;
+            }
+            else if (focus)
+            {
+                //UnityEngine.Debug.Log("Switch to FOCUS!");
+                playerState = State.FOCUS;
+            }
+            else if (crouched)
+            {
+                //UnityEngine.Debug.Log("Switch to GROUND!");
+                playerState = State.GROUND;
             }
             else
             {
+                //UnityEngine.Debug.Log("Switch to NORMAL!");
                 playerState = State.NORMAL;
             }
         }
@@ -120,21 +230,66 @@ public class PlayerController : MonoBehaviour
         {
             dashCooldown -= Time.deltaTime;
         }
-        if (dashCooldown <= 0.5f && dashCooldown > 0.0f && dashEnd && dashReset)
+        if (dashCooldown <= 0.15f && dashCooldown > 0.0f && dashEnd && dashReset)
         {
-            TransitionState();
+            if (bhop)
+            {
+                //UnityEngine.Debug.Log("Switch to AERIAL!");
+                playerState = State.AERIAL;
+            }
+            else if (focus)
+            {
+                //UnityEngine.Debug.Log("Switch to FOCUS!");
+                playerState = State.FOCUS;
+            }
+            else if (crouched)
+            {
+                //UnityEngine.Debug.Log("Switch to GROUND!");
+                playerState = State.GROUND;
+            }
+            else
+            {
+                //UnityEngine.Debug.Log("Switch to NORMAL!");
+                playerState = State.NORMAL;
+            }
 
             if (grounded)
             {
                 rb.drag = groundDrag;
             }
             dashEnd = false;
-            //rb.velocity = new Vector3(0.0f, rb.velocity.y, 0.0f);
         }
         else if (dashCooldown <= 0.0f && dashReset)
         {
             dashReset = false;
-            dashCooldown = 0.75f;
+            dashCooldown = 0.4f;
+        }
+
+        // HANDLE THE FOCUS INPUT **********************************************************************************
+
+        if (Input.GetMouseButtonDown(1))
+        {
+            focus = true;
+            TransitionState();
+        }
+        else if (Input.GetMouseButtonUp(1))
+        {
+            focus = false;
+            if (bhop)
+            {
+                //UnityEngine.Debug.Log("Switch to AERIAL!");
+                playerState = State.AERIAL;
+            }
+            else if (crouched)
+            {
+                //UnityEngine.Debug.Log("Switch to GROUND!");
+                playerState = State.GROUND;
+            }
+            else
+            {
+                //UnityEngine.Debug.Log("Switch to NORMAL!");
+                playerState = State.NORMAL;
+            }
         }
 
     }
@@ -145,31 +300,41 @@ public class PlayerController : MonoBehaviour
         {
             moveDirection = cameraTransform.right.normalized * horizontal + cameraTransform.forward.normalized * vertical;
             moveDirection.y = 0.0f;
+            if(playerState != State.FOCUS){
+                if (grounded && (playerState == State.NORMAL || (playerState == State.GROUND && momentum >= 1.0f)))
+                {
+                    rb.AddForce(moveDirection.normalized * speed * 10.0f, ForceMode.Force);
+                }
+                else if (grounded && crouched && playerState == State.GROUND)
+                {
+                    rb.AddForce(moveDirection.normalized * speed * 10.0f * aircontrol * 2.5f * momentum, ForceMode.Force);
+                }
+                else if (!grounded && (playerState != State.AERIAL || playerState != State.NORMAL))
+                {
+                    rb.AddForce(moveDirection.normalized * speed * 10.0f * aircontrol * momentum, ForceMode.Force);
+                }
+            }
+            else
+            {
+                rb.AddForce(moveDirection.normalized * speed * 5.0f, ForceMode.Force);
+            }
 
-            if (grounded && playerState == State.NORMAL)
-            {
-                rb.AddForce(moveDirection.normalized * speed * 10.0f, ForceMode.Force);
-            }
-            else if (grounded && crouched && playerState == State.GROUND)
-            {
-                rb.AddForce(moveDirection.normalized * speed * 15.0f * aircontrol * momentum, ForceMode.Force);
-            }
-            else if (!grounded && (playerState != State.AERIAL || playerState != State.NORMAL))
-            {
-                rb.AddForce(moveDirection.normalized * speed * 10.0f * aircontrol * momentum, ForceMode.Force);
-            }
-
-            if (!grounded && !dashReset && momentum <= maxMom && (moveDirection.x != 0 || moveDirection.z != 0))
+            if (!grounded && momentum <= maxMom && (moveDirection.x != 0 || moveDirection.z != 0))
             {
                 momentum += momentumClimb;
             }
             else if (grounded && crouched && momentum <= maxMom)
             {
-                momentum -= momentumClimb;
+                momentum -= momentumClimb/2f;
                 if (momentum <= 1.0f)
                 {
+                    //rb.velocity = Vector3.zero;
                     momentum = 1.0f;
                 }
+            }
+            else if (focus && momentum <= maxMom)
+            {
+                momentum += momentumClimb * 1.5f;
             }
         }
         Quaternion targetRotation = Quaternion.Euler(0, cameraTransform.eulerAngles.y, 0);
@@ -182,27 +347,37 @@ public class PlayerController : MonoBehaviour
         Vector3 newVel;
         if (!dashEnd)
         {
-            if (grounded)
+            if (focus)
             {
-                if (flatVel.magnitude > speed && playerState == State.NORMAL)
+                if (flatVel.magnitude > speed / 2f)
                 {
-                    newVel = flatVel.normalized * speed;
-                    rb.velocity = new Vector3(newVel.x, rb.velocity.y, newVel.z);
-                }
-                else if (flatVel.magnitude > speed + (12.5f * (momentum - 1)/(maxMom - 1)) && (playerState == State.GROUND || playerState == State.AERIAL))
-                {
-                    newVel = flatVel.normalized * (speed + (12.5f * (momentum - 1)/(maxMom - 1)));
+                    newVel = flatVel.normalized * speed / 2f;
                     rb.velocity = new Vector3(newVel.x, rb.velocity.y, newVel.z);
                 }
             }
-            else if(!grounded)
-            {
-                if (flatVel.magnitude > (speed + (12.5f * (momentum - 1) / (maxMom - 1))))
+            else {
+                if (grounded)
                 {
-                    newVel = flatVel.normalized * (speed + (12.5f * (momentum - 1) / (maxMom - 1)));
-                    rb.velocity = new Vector3(newVel.x, rb.velocity.y, newVel.z);
+                    if (flatVel.magnitude > speed && playerState == State.NORMAL)
+                    {
+                        newVel = flatVel.normalized * speed;
+                        rb.velocity = new Vector3(newVel.x, rb.velocity.y, newVel.z);
+                    }
+                    else if (flatVel.magnitude > speed + (10f * (momentum - 1) / (maxMom - 1)) && (playerState == State.GROUND || playerState == State.AERIAL))
+                    {
+                        newVel = flatVel.normalized * (speed + (10f * (momentum - 1) / (maxMom - 1)));
+                        rb.velocity = new Vector3(newVel.x, rb.velocity.y, newVel.z);
+                    }
                 }
+                else if (!grounded)
+                {
+                    if (flatVel.magnitude > speed + (10f * (momentum - 1) / (maxMom - 1)))
+                    {
+                        newVel = flatVel.normalized * (speed + (10f * (momentum - 1) / (maxMom - 1)));
+                        rb.velocity = new Vector3(newVel.x, rb.velocity.y, newVel.z);
+                    }
 
+                }
             }
         }
         else
@@ -221,8 +396,10 @@ public class PlayerController : MonoBehaviour
         {
             slam = false;
             grounded = true;
+            //UnityEngine.Debug.Log(bhop);
             if (bhop)
             {
+                //UnityEngine.Debug.Log("JUMP NOW!");
                 Jump();
             }
 
@@ -233,7 +410,7 @@ public class PlayerController : MonoBehaviour
             }
             else if (playerState == State.GROUND)
             {
-                rb.drag = 0.5f;
+                rb.drag = 1f;
             }
         }
     }
@@ -244,8 +421,10 @@ public class PlayerController : MonoBehaviour
         {
             slam = false;
             grounded = true;
+            //UnityEngine.Debug.Log(bhop);
             if (bhop)
             {
+                //UnityEngine.Debug.Log("JUMP RIGHT NOW!");
                 Jump();
             }
 
@@ -256,7 +435,7 @@ public class PlayerController : MonoBehaviour
             }
             else if (playerState == State.GROUND)
             {
-                rb.drag = 0.5f;
+                rb.drag = 1f;
             }
         }
     }
@@ -272,6 +451,7 @@ public class PlayerController : MonoBehaviour
 
     private void Jump()
     {
+        //UnityEngine.Debug.Log("JUMP!");
         if (!crouched && grounded && bhop)
         {
             rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
@@ -283,9 +463,9 @@ public class PlayerController : MonoBehaviour
     {
         slam = true;
         momentum -= 0.5f;
-        if (momentum >= maxMom)
+        if (momentum <= 1.0f)
         {
-            momentum = maxMom;
+            momentum = 1.0f;
         }
         rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
         rb.AddForce(transform.up * -jumpForce * 3.0f, ForceMode.Impulse);
@@ -299,13 +479,13 @@ public class PlayerController : MonoBehaviour
     private void Dash()
     {
         moveDirection = cameraTransform.right.normalized * horizontal + cameraTransform.forward.normalized * vertical;
-        moveDirection *= 40.0f;
+        moveDirection *= 45.0f;
         moveDirection.y = rb.velocity.y;
-        momentum -= 1.25f;
-        if (momentum <= 1.0f)
-        {
-            momentum = 1.0f;
-        }
+        //momentum -= 1.25f;
+        //if (momentum <= 1.0f)
+        //{
+            //momentum = 1.0f;
+        //}
 
         rb.drag = 0.0f;
         rb.velocity = moveDirection;
@@ -313,38 +493,46 @@ public class PlayerController : MonoBehaviour
 
     private void TransitionState()
     {
-        if (bhop && (playerState == State.GROUND || playerState == State.NORMAL || playerState == State.DASH))
+        if (bhop || crouched || (dashEnd && dashReset) || focus)
         {
-            UnityEngine.Debug.Log("Switch to AERIAL!");
-            playerState = State.AERIAL;
-            //Jump();
-        }
-        else if (crouched && (playerState == State.NORMAL || playerState == State.AERIAL || playerState == State.DASH))
-        {
-            UnityEngine.Debug.Log("Switch to GROUND!");
-            playerState = State.GROUND;
-            if (!grounded)
+            if (bhop && playerState != State.AERIAL)
             {
-                Slam();
+                //UnityEngine.Debug.Log("Switch to AERIAL!");
+                playerState = State.AERIAL;
+                Jump();
             }
-            else
+            if (crouched)
             {
-                Slide();
+                //UnityEngine.Debug.Log("Switch to GROUND!");
+                playerState = State.GROUND;
+                if (!grounded)
+                {
+                    Slam();
+                }
+                else
+                {
+                    Slide();
+                }
             }
-        }
-        else if (dashEnd && dashReset && (playerState == State.NORMAL || playerState == State.AERIAL || playerState == State.GROUND))
-        {
-            moveDirection = cameraTransform.right.normalized * horizontal + cameraTransform.forward.normalized * vertical;
-            if (moveDirection.x != 0 || moveDirection.z != 0)
+            if (dashEnd && dashReset)
             {
-                UnityEngine.Debug.Log("Switch to DASH!");
-                playerState = State.DASH;
-                Dash();
+                moveDirection = cameraTransform.right.normalized * horizontal + cameraTransform.forward.normalized * vertical;
+                if (moveDirection.x != 0 || moveDirection.z != 0)
+                {
+                    //UnityEngine.Debug.Log("Switch to DASH!");
+                    playerState = State.DASH;
+                    Dash();
+                }
+            }
+            if (focus)
+            {
+                //UnityEngine.Debug.Log("Switch to FOCUS!");
+                playerState = State.FOCUS;
             }
         }
         else
         {
-            UnityEngine.Debug.Log("Switch to NORMAL!");
+            //UnityEngine.Debug.Log("Switch to NORMAL!");
             playerState = State.NORMAL;
         }
     }
