@@ -1,125 +1,110 @@
 using System.Collections;
 using System.Collections.Generic;
+using KinematicCharacterController;
+using KinematicCharacterController.Examples;
 using UnityEngine;
 
-public class SpellHitbox : MonoBehaviour, ISpell
-{
-    [SerializeField]
-    private float ran;
-    [SerializeField]
-    private float hit;
-    [SerializeField]
-    private float tt;
-    [SerializeField]
-    private float cr;
-    [SerializeField]
-    private int dam;
-    [SerializeField]
-    private Vector3 knock;
-    [SerializeField]
-    public Vector3 aim;
-    [SerializeField]
-    private float k;
-    [SerializeField]
-    private float status;
-    [SerializeField]
-    private int mana;
-    public Vector3 dir;
-
-    public float range { get; set; }
-    public float hitbox { get; set; }
-    public float travelTime { get; set; }
-    public float castRate { get; set; }
-    public int damage { get; set; }
-    public Vector3 knockBack { get; set; }
-    public Vector3 aimDirect { get; set; }
-    public float statusBuild { get; set; }
-    public int manaUse { get; set; }
-    private Vector3 start;
-
-    //ISpell(float range,float hitbox,float travelTime,float castRate, int damage, Vector3 knockback,float statusBuild,int manaUse);
-
-    // Start is called before the first frame update
-    void OnEnable()
+//namespace KinematicCharacterController.Walkthrough.AddingImpulses
+//{
+    public class SpellHitbox : MonoBehaviour, ISpell
     {
-        range = ran;
-        hitbox = hit;
-        travelTime = tt;
-        castRate = cr;
-        damage = dam;
-        knockBack = knock;
-        //aimDirect = (dir + aim);
-        statusBuild = status;
-        manaUse = mana;
+        [SerializeField]
+        private GameObject parent;
+        [SerializeField]
+        private float ran;
+        [SerializeField]
+        private float hit;
+        [SerializeField]
+        private float tt;
+        [SerializeField]
+        private float cr;
+        [SerializeField]
+        private int dam;
+        [SerializeField]
+        public Vector3 knock;
+        [SerializeField]
+        public Vector3 aim;
+        [SerializeField]
+        public float k;
+        [SerializeField]
+        private float status;
+        [SerializeField]
+        private int mana;
+        public Vector3 dir;
 
-        start = transform.position;
-    }
+        public float range { get; set; }
+        public float hitbox { get; set; }
+        public float travelTime { get; set; }
+        public float castRate { get; set; }
+        public int damage { get; set; }
+        public Vector3 knockBack { get; set; }
+        public Vector3 aimDirect { get; set; }
+        public float statusBuild { get; set; }
+        public int manaUse { get; set; }
+        private Vector3 start;
 
-    // Update is called once per frame
-    void Update()
-    {
+        //ISpell(float range,float hitbox,float travelTime,float castRate, int damage, Vector3 knockback,float statusBuild,int manaUse);
 
-    }
-
-    private void OnTriggerEnter(Collider other)
-    {
-        if (other.gameObject.tag != "Player" && other.gameObject.tag != "Spell" && other.gameObject.tag != "Ground")
+        // Start is called before the first frame update
+        void OnEnable()
         {
-            if (other.gameObject.tag == "Enemy")
+            range = ran;
+            hitbox = hit;
+            travelTime = tt;
+            castRate = cr;
+            damage = dam;
+            knockBack = knock;
+            //aimDirect = (dir + aim);
+            statusBuild = status;
+            manaUse = mana;
+
+            start = transform.position;
+        }
+
+        // Update is called once per frame
+        void Update()
+        {
+            if (Vector3.Distance(transform.position, start) >= range)
             {
-                UnityEngine.Debug.Log("HELOO ENTER");
-                int hits = other.gameObject.GetComponent<EnemyBehavior>().hits;
-                if (hits > 0)
-                {
-                    //other.gameObject.GetComponent<EnemyBehavior>().gravityScale += 0.25f;
-                }
-                other.gameObject.GetComponent<EnemyBehavior>().hit = true;
-                other.gameObject.GetComponent<EnemyBehavior>().hitTimer = 1.0f;
-                other.gameObject.GetComponent<EnemyBehavior>().airControl = 0f;
-                other.gameObject.GetComponent<Rigidbody>().velocity = ((dir * knockBack.z) + (Vector3.up * knockBack.y)).normalized * k;
                 Destroy(gameObject);
             }
         }
-    }
-    private void OnTriggerStay(Collider other)
-    {
-        if (other.gameObject.tag != "Player" && other.gameObject.tag != "Spell" && other.gameObject.tag != "Ground")
+
+        private void OnTriggerEnter(Collider other)
         {
-            
-            if (other.gameObject.tag == "Enemy")
+            if (other.gameObject.tag != "Player" && other.gameObject.tag != "Spell")
             {
-                UnityEngine.Debug.Log("HELOO STAY");
-                int hits = other.gameObject.GetComponent<EnemyBehavior>().hits;
-                if (hits > 0)
+                if (other.gameObject.tag == "Enemy")
                 {
-                    //other.gameObject.GetComponent<EnemyBehavior>().gravityScale += 0.25f;
+                    int hits = other.gameObject.GetComponent<EnemyBehavior>().hits;
+                    if (hits > 0)
+                    {
+                        //other.gameObject.GetComponent<EnemyBehavior>().gravityScale += 0.25f;
+                    }
+                    other.gameObject.GetComponent<EnemyBehavior>().hit = true;
+                    other.gameObject.GetComponent<EnemyBehavior>().hitTimer = 1.0f;
+                    other.gameObject.GetComponent<EnemyBehavior>().airControl = 0.2f;
+                    //other.gameObject.GetComponent<EnemyBehavior>().navMeshAgent.ActivateCurrentOffMeshLink(false);
+                    /*if (other.gameObject.GetComponent<EnemyBehavior>().navMeshAgent.isOnOffMeshLink)
+                    {
+                        other.gameObject.GetComponent<EnemyBehavior>().navMeshAgent.Warp(other.gameObject.transform.position);
+                        UnityEngine.Debug.Log(other.gameObject.GetComponent<EnemyBehavior>().navMeshAgent.isOnOffMeshLink);
+                    }
+                    */
+                    //other.gameObject.GetComponent<EnemyBehavior>().prev = knockBack.y;
+                    //other.gameObject.GetComponent<EnemyBehavior>().timeFrame = Time.time;
+                    //other.gameObject.GetComponent<EnemyBehavior>().navMeshAgent.baseOffset = 10f;
+                    other.gameObject.GetComponent<EnemyBehavior>().navMeshAgent.enabled = false;
+                    other.gameObject.GetComponent<Rigidbody>().isKinematic = false;
+                    other.gameObject.GetComponent<Rigidbody>().velocity = ((dir * knockBack.z) + (Vector3.up * knockBack.y)).normalized * k;
+                    //other.gameObject.GetComponent<MyCharacterController>().UpdateVelocity(((dir * knockBack.z) + (Vector3.up * knockBack.y)).normalized * k);
+                    //other.gameObject.GetComponent<MyCharacterController>().Motor.ForceUnground(0.1f);
+                    //other.gameObject.GetComponent<MyCharacterController>().AddVelocity(((dir * knockBack.z) + (Vector3.up * knockBack.y)).normalized * k);
+                    Destroy(gameObject);
                 }
-                other.gameObject.GetComponent<EnemyBehavior>().hit = true;
-                other.gameObject.GetComponent<EnemyBehavior>().hitTimer = 1.0f;
-                other.gameObject.GetComponent<EnemyBehavior>().airControl = 0f;
-                other.gameObject.GetComponent<Rigidbody>().velocity = ((dir * knockBack.z) + (Vector3.up * knockBack.y)).normalized * k;
-                Destroy(gameObject);
+                UnityEngine.Debug.Log("HELOOOOOOOO");
+                Destroy(parent);
             }
         }
     }
-    private void OnTriggerExit(Collider other)
-    {
-        if (other.gameObject.tag != "Player" && other.gameObject.tag != "Spell" && other.gameObject.tag != "Ground")
-        {
-            if (other.gameObject.tag == "Enemy")
-            {
-                UnityEngine.Debug.Log("HELOO EXIT");
-                int hits = other.gameObject.GetComponent<EnemyBehavior>().hits;
-                if (hits > 0)
-                {
-                    //other.gameObject.GetComponent<EnemyBehavior>().gravityScale += 0.25f;
-                }
-                other.gameObject.GetComponent<EnemyBehavior>().hit = true;
-                other.gameObject.GetComponent<EnemyBehavior>().hitTimer = 1.0f;
-                other.gameObject.GetComponent<EnemyBehavior>().airControl = 0f;
-                other.gameObject.GetComponent<Rigidbody>().velocity = ((dir * knockBack.z) + (Vector3.up * knockBack.y)).normalized * k;
-                Destroy(gameObject);
-            }
-        }
-    }
-}
+//}
